@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 pragma solidity 0.8.15;
 
-import {ERC20} from "solmate/tokens/ERC20.sol";
-import {ReentrancyGuard} from "solmate/utils/ReentrancyGuard.sol";
-import {Auth, Authority} from "solmate/auth/Auth.sol";
+import {ERC20} from "@rari-capital/solmate/src/tokens/ERC20.sol";
+import {ReentrancyGuard} from "@rari-capital/solmate/src/utils/ReentrancyGuard.sol";
+import {Auth, Authority} from "@rari-capital/solmate/src/auth/Auth.sol";
 
 import {IBondTeller} from "../interfaces/IBondTeller.sol";
 import {IBondCallback} from "../interfaces/IBondCallback.sol";
@@ -45,7 +45,12 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     error Teller_InvalidParams();
 
     /* ========== EVENTS ========== */
-    event Bonded(uint256 indexed id, address indexed referrer, uint256 amount, uint256 payout);
+    event Bonded(
+        uint256 indexed id,
+        address indexed referrer,
+        uint256 amount,
+        uint256 payout
+    );
 
     /* ========== STATE VARIABLES ========== */
 
@@ -99,13 +104,18 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     }
 
     /// @inheritdoc IBondTeller
-    function setCreateFeeDiscount(uint48 discount_) external override requiresAuth {
+    function setCreateFeeDiscount(
+        uint48 discount_
+    ) external override requiresAuth {
         if (discount_ > protocolFee) revert Teller_InvalidParams();
         createFeeDiscount = discount_;
     }
 
     /// @inheritdoc IBondTeller
-    function claimFees(ERC20[] memory tokens_, address to_) external override nonReentrant {
+    function claimFees(
+        ERC20[] memory tokens_,
+        address to_
+    ) external override nonReentrant {
         uint256 len = tokens_.length;
         for (uint256 i; i < len; ++i) {
             ERC20 token = tokens_[i];
@@ -142,16 +152,20 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         // 1. Calculate referrer fee
         // 2. Calculate protocol fee as the total expected fee amount minus the referrer fee
         //    to avoid issues with rounding from separate fee calculations
-        uint256 toReferrer = amount_.mulDiv(referrerFees[referrer_], FEE_DECIMALS);
-        uint256 toProtocol = amount_.mulDiv(protocolFee + referrerFees[referrer_], FEE_DECIMALS) -
-            toReferrer;
+        uint256 toReferrer = amount_.mulDiv(
+            referrerFees[referrer_],
+            FEE_DECIMALS
+        );
+        uint256 toProtocol = amount_.mulDiv(
+            protocolFee + referrerFees[referrer_],
+            FEE_DECIMALS
+        ) - toReferrer;
 
         {
             IBondAuctioneer auctioneer = _aggregator.getAuctioneer(id_);
             address owner;
-            (owner, , payoutToken, quoteToken, vesting, ) = auctioneer.getMarketInfoForPurchase(
-                id_
-            );
+            (owner, , payoutToken, quoteToken, vesting, ) = auctioneer
+                .getMarketInfoForPurchase(id_);
 
             // Auctioneer handles bond pricing, capacity, and duration
             uint256 amountLessFee = amount_ - toReferrer - toProtocol;
@@ -181,9 +195,14 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         uint256 feePaid_
     ) internal {
         // Get info from auctioneer
-        (address owner, address callbackAddr, ERC20 payoutToken, ERC20 quoteToken, , ) = _aggregator
-            .getAuctioneer(id_)
-            .getMarketInfoForPurchase(id_);
+        (
+            address owner,
+            address callbackAddr,
+            ERC20 payoutToken,
+            ERC20 quoteToken,
+            ,
+
+        ) = _aggregator.getAuctioneer(id_).getMarketInfoForPurchase(id_);
 
         // Calculate amount net of fees
         uint256 amountLessFee = amount_ - feePaid_;
@@ -207,8 +226,9 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
             IBondCallback(callbackAddr).callback(id_, amountLessFee, payout_);
 
             // Check to ensure that the callback sent the requested amount of payout tokens back to the teller
-            if (payoutToken.balanceOf(address(this)) < (payoutBalance + payout_))
-                revert Teller_InvalidCallback();
+            if (
+                payoutToken.balanceOf(address(this)) < (payoutBalance + payout_)
+            ) revert Teller_InvalidCallback();
         } else {
             // If no callback is provided, transfer tokens from market owner to this contract
             // for payout.
@@ -216,8 +236,9 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
             // Handles edge cases like fee-on-transfer tokens (which are not supported)
             uint256 payoutBalance = payoutToken.balanceOf(address(this));
             payoutToken.safeTransferFrom(owner, address(this), payout_);
-            if (payoutToken.balanceOf(address(this)) < (payoutBalance + payout_))
-                revert Teller_UnsupportedToken();
+            if (
+                payoutToken.balanceOf(address(this)) < (payoutBalance + payout_)
+            ) revert Teller_UnsupportedToken();
 
             quoteToken.safeTransfer(owner, amountLessFee);
         }
@@ -244,11 +265,10 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     /// @param expiry_      Timestamp that the Bond Token vests at
     /// @return name        Bond token name, format is "Token YYYY-MM-DD"
     /// @return symbol      Bond token symbol, format is "TKN-YYYYMMDD"
-    function _getNameAndSymbol(ERC20 underlying_, uint256 expiry_)
-        internal
-        view
-        returns (string memory name, string memory symbol)
-    {
+    function _getNameAndSymbol(
+        ERC20 underlying_,
+        uint256 expiry_
+    ) internal view returns (string memory name, string memory symbol) {
         // Convert a number of days into a human-readable date, courtesy of BokkyPooBah.
         // Source: https://github.com/bokkypoobah/BokkyPooBahsDateTimeLibrary/blob/master/contracts/BokkyPooBahsDateTimeLibrary.sol
 
@@ -284,9 +304,25 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
 
         // Construct name/symbol strings.
         name = string(
-            abi.encodePacked(underlying_.name(), " ", yearStr, "-", monthStr, "-", dayStr)
+            abi.encodePacked(
+                underlying_.name(),
+                " ",
+                yearStr,
+                "-",
+                monthStr,
+                "-",
+                dayStr
+            )
         );
-        symbol = string(abi.encodePacked(underlying_.symbol(), "-", yearStr, monthStr, dayStr));
+        symbol = string(
+            abi.encodePacked(
+                underlying_.symbol(),
+                "-",
+                yearStr,
+                monthStr,
+                dayStr
+            )
+        );
     }
 
     // Some fancy math to convert a uint into a string, courtesy of Provable Things.

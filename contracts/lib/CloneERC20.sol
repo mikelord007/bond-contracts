@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pragma solidity >=0.8.0;
 
-import {Clone} from "clones/Clone.sol";
+import {Clone} from "clones-with-immutable-args/Clone.sol";
 
 /// @notice Modern and gas efficient ERC20 implementation.
 /// @author Solmate (https://github.com/Rari-Capital/solmate/blob/main/src/tokens/ERC20.sol)
@@ -14,7 +14,11 @@ abstract contract CloneERC20 is Clone {
 
     event Transfer(address indexed from, address indexed to, uint256 amount);
 
-    event Approval(address indexed owner, address indexed spender, uint256 amount);
+    event Approval(
+        address indexed owner,
+        address indexed spender,
+        uint256 amount
+    );
 
     /*///////////////////////////////////////////////////////////////
                               ERC20 STORAGE
@@ -46,7 +50,10 @@ abstract contract CloneERC20 is Clone {
                               ERC20 LOGIC
     //////////////////////////////////////////////////////////////*/
 
-    function approve(address spender, uint256 amount) public virtual returns (bool) {
+    function approve(
+        address spender,
+        uint256 amount
+    ) public virtual returns (bool) {
         allowance[msg.sender][spender] = amount;
 
         emit Approval(msg.sender, spender, amount);
@@ -54,7 +61,10 @@ abstract contract CloneERC20 is Clone {
         return true;
     }
 
-    function increaseAllowance(address spender, uint256 amount) public virtual returns (bool) {
+    function increaseAllowance(
+        address spender,
+        uint256 amount
+    ) public virtual returns (bool) {
         allowance[msg.sender][spender] += amount;
 
         emit Approval(msg.sender, spender, allowance[msg.sender][spender]);
@@ -62,7 +72,10 @@ abstract contract CloneERC20 is Clone {
         return true;
     }
 
-    function decreaseAllowance(address spender, uint256 amount) public virtual returns (bool) {
+    function decreaseAllowance(
+        address spender,
+        uint256 amount
+    ) public virtual returns (bool) {
         allowance[msg.sender][spender] -= amount;
 
         emit Approval(msg.sender, spender, allowance[msg.sender][spender]);
@@ -70,7 +83,10 @@ abstract contract CloneERC20 is Clone {
         return true;
     }
 
-    function transfer(address to, uint256 amount) public virtual returns (bool) {
+    function transfer(
+        address to,
+        uint256 amount
+    ) public virtual returns (bool) {
         balanceOf[msg.sender] -= amount;
 
         // Cannot overflow because the sum of all user
@@ -91,7 +107,8 @@ abstract contract CloneERC20 is Clone {
     ) public virtual returns (bool) {
         uint256 allowed = allowance[from][msg.sender]; // Saves gas for limited approvals.
 
-        if (allowed != type(uint256).max) allowance[from][msg.sender] = allowed - amount;
+        if (allowed != type(uint256).max)
+            allowance[from][msg.sender] = allowed - amount;
 
         balanceOf[from] -= amount;
 
@@ -134,9 +151,16 @@ abstract contract CloneERC20 is Clone {
         emit Transfer(from, address(0), amount);
     }
 
-    function _getImmutableVariablesOffset() internal pure returns (uint256 offset) {
+    function _getImmutableVariablesOffset()
+        internal
+        pure
+        returns (uint256 offset)
+    {
         assembly {
-            offset := sub(calldatasize(), add(shr(240, calldataload(sub(calldatasize(), 2))), 2))
+            offset := sub(
+                calldatasize(),
+                add(shr(240, calldataload(sub(calldatasize(), 2))), 2)
+            )
         }
     }
 }

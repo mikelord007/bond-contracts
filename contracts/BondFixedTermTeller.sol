@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 pragma solidity 0.8.15;
 
-import {ERC20} from "solmate/tokens/ERC20.sol";
+import {ERC20} from "@rari-capital/solmate/src/tokens/ERC20.sol";
 
 import {BondBaseTeller, IBondAggregator, Authority} from "./bases/BondBaseTeller.sol";
 import {IBondFixedTermTeller} from "./interfaces/IBondFixedTermTeller.sol";
@@ -31,7 +31,11 @@ contract BondFixedTermTeller is BondBaseTeller, IBondFixedTermTeller, ERC1155 {
     using FullMath for uint256;
 
     /* ========== EVENTS ========== */
-    event ERC1155BondTokenCreated(uint256 tokenId, ERC20 indexed underlying, uint48 indexed expiry);
+    event ERC1155BondTokenCreated(
+        uint256 tokenId,
+        ERC20 indexed underlying,
+        uint48 indexed expiry
+    );
 
     /* ========== STATE VARIABLES ========== */
 
@@ -72,7 +76,9 @@ contract BondFixedTermTeller is BondBaseTeller, IBondFixedTermTeller, ERC1155 {
         // expires on day 8. when bob deposits on day 2, his bond expires day 9.
         if (vesting_ != 0) {
             // Normalizing fixed term vesting timestamps to the same time each day
-            expiry = ((vesting_ + uint48(block.timestamp)) / uint48(1 days)) * uint48(1 days);
+            expiry =
+                ((vesting_ + uint48(block.timestamp)) / uint48(1 days)) *
+                uint48(1 days);
 
             // Fixed-term user payout information is handled in BondTeller.
             // Teller mints ERC-1155 bond tokens for user.
@@ -109,7 +115,8 @@ contract BondFixedTermTeller is BondBaseTeller, IBondFixedTermTeller, ERC1155 {
         uint256 tokenId = getTokenId(underlying_, expiry);
 
         // Revert if no token exists, must call deploy first
-        if (!tokenMetadata[tokenId].active) revert Teller_TokenDoesNotExist(underlying_, expiry);
+        if (!tokenMetadata[tokenId].active)
+            revert Teller_TokenDoesNotExist(underlying_, expiry);
 
         // Transfer in underlying
         // Check that amount received is not less than amount expected
@@ -123,7 +130,10 @@ contract BondFixedTermTeller is BondBaseTeller, IBondFixedTermTeller, ERC1155 {
         // Otherwise, fee is zero.
         if (protocolFee > createFeeDiscount) {
             // Calculate fee amount
-            uint256 feeAmount = amount_.mulDiv(protocolFee - createFeeDiscount, FEE_DECIMALS);
+            uint256 feeAmount = amount_.mulDiv(
+                protocolFee - createFeeDiscount,
+                FEE_DECIMALS
+            );
             rewards[_protocol][underlying_] += feeAmount;
 
             // Mint new bond tokens
@@ -148,7 +158,8 @@ contract BondFixedTermTeller is BondBaseTeller, IBondFixedTermTeller, ERC1155 {
         TokenMetadata memory meta = tokenMetadata[tokenId_];
 
         // Check that the token has matured
-        if (block.timestamp < meta.expiry) revert Teller_TokenNotMatured(meta.expiry);
+        if (block.timestamp < meta.expiry)
+            revert Teller_TokenNotMatured(meta.expiry);
 
         // Burn bond token and transfer underlying to sender
         _burnToken(msg.sender, tokenId_, amount_);
@@ -156,16 +167,18 @@ contract BondFixedTermTeller is BondBaseTeller, IBondFixedTermTeller, ERC1155 {
     }
 
     /// @inheritdoc IBondFixedTermTeller
-    function redeem(uint256 tokenId_, uint256 amount_) public override nonReentrant {
+    function redeem(
+        uint256 tokenId_,
+        uint256 amount_
+    ) public override nonReentrant {
         _redeem(tokenId_, amount_);
     }
 
     /// @inheritdoc IBondFixedTermTeller
-    function batchRedeem(uint256[] calldata tokenIds_, uint256[] calldata amounts_)
-        external
-        override
-        nonReentrant
-    {
+    function batchRedeem(
+        uint256[] calldata tokenIds_,
+        uint256[] calldata amounts_
+    ) external override nonReentrant {
         uint256 len = tokenIds_.length;
         if (len != amounts_.length) revert Teller_InvalidParams();
         for (uint256 i; i < len; ++i) {
@@ -176,12 +189,10 @@ contract BondFixedTermTeller is BondBaseTeller, IBondFixedTermTeller, ERC1155 {
     /* ========== TOKENIZATION ========== */
 
     /// @inheritdoc IBondFixedTermTeller
-    function deploy(ERC20 underlying_, uint48 expiry_)
-        external
-        override
-        nonReentrant
-        returns (uint256)
-    {
+    function deploy(
+        ERC20 underlying_,
+        uint48 expiry_
+    ) external override nonReentrant returns (uint256) {
         uint256 tokenId = getTokenId(underlying_, expiry_);
         // Only creates token if it does not exist
         if (!tokenMetadata[tokenId].active) {
@@ -248,7 +259,10 @@ contract BondFixedTermTeller is BondBaseTeller, IBondFixedTermTeller, ERC1155 {
     /* ========== TOKEN NAMING ========== */
 
     /// @inheritdoc IBondFixedTermTeller
-    function getTokenId(ERC20 underlying_, uint48 expiry_) public pure override returns (uint256) {
+    function getTokenId(
+        ERC20 underlying_,
+        uint48 expiry_
+    ) public pure override returns (uint256) {
         // Expiry is divided by 1 day (in seconds) since bond tokens are only unique
         // to a day, not a specific timestamp.
         uint256 tokenId = uint256(
@@ -258,12 +272,9 @@ contract BondFixedTermTeller is BondBaseTeller, IBondFixedTermTeller, ERC1155 {
     }
 
     /// @inheritdoc IBondFixedTermTeller
-    function getTokenNameAndSymbol(uint256 tokenId_)
-        external
-        view
-        override
-        returns (string memory, string memory)
-    {
+    function getTokenNameAndSymbol(
+        uint256 tokenId_
+    ) external view override returns (string memory, string memory) {
         TokenMetadata memory meta = tokenMetadata[tokenId_];
         (string memory name, string memory symbol) = _getNameAndSymbol(
             meta.underlying,

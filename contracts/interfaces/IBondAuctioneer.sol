@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity >=0.8.0;
 
-import {ERC20} from "solmate/tokens/ERC20.sol";
+import {ERC20} from "@rari-capital/solmate/src/tokens/ERC20.sol";
 import {IBondTeller} from "../interfaces/IBondTeller.sol";
 import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
 
@@ -88,7 +88,9 @@ interface IBondAuctioneer {
     /// @return quoteToken      Quote Token (token received) for the Market
     /// @return vesting         Timestamp or duration for vesting, implementation-dependent
     /// @return maxPayout       Maximum amount of payout tokens you can purchase in one transaction
-    function getMarketInfoForPurchase(uint256 id_)
+    function getMarketInfoForPurchase(
+        uint256 id_
+    )
         external
         view
         returns (
@@ -129,7 +131,10 @@ interface IBondAuctioneer {
     /// @param id_          ID of market
     /// @param referrer_    Address of referrer, used to get fees to calculate accurate payout amount.
     ///                     Inputting the zero address will take into account just the protocol fee.
-    function maxAmountAccepted(uint256 id_, address referrer_) external view returns (uint256);
+    function maxAmountAccepted(
+        uint256 id_,
+        address referrer_
+    ) external view returns (uint256);
 
     /// @notice             Does market send payout immediately
     /// @param id_          Market ID to search for

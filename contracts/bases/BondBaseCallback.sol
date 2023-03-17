@@ -91,7 +91,7 @@ abstract contract BondBaseCallback is IBondCallback, Ownable, ReentrancyGuard {
         uint256 id_,
         uint256 inputAmount_,
         uint256 outputAmount_
-    ) external override nonReentrant {
+    ) external override payable nonReentrant {
         /// Confirm that the teller and market id are whitelisted
         if (!approvedMarkets[msg.sender][id_]) revert Callback_MarketNotSupported(id_);
 
@@ -101,8 +101,15 @@ abstract contract BondBaseCallback is IBondCallback, Ownable, ReentrancyGuard {
             .getMarketInfoForPurchase(id_);
 
         // Check that quoteTokens were transferred prior to the call
-        if (quoteToken.balanceOf(address(this)) < priorBalances[quoteToken] + inputAmount_)
+        if( !(address(quoteToken) == address(0)) ) {
+            if (quoteToken.balanceOf(address(this)) < priorBalances[quoteToken] + inputAmount_)
             revert Callback_TokensNotReceived();
+        }
+        else {
+            if (address(this).balance < priorBalances[quoteToken] + inputAmount_)
+            revert Callback_TokensNotReceived();
+        }
+        
 
         // Call internal _callback function to handle implementation-specific logic
         /// @dev must implement _callback in contracts that inherit this base
@@ -110,8 +117,8 @@ abstract contract BondBaseCallback is IBondCallback, Ownable, ReentrancyGuard {
 
         // Store amounts in/out
         /// @dev updated after internal call so previous balances are available to check against
-        priorBalances[quoteToken] = quoteToken.balanceOf(address(this));
-        priorBalances[payoutToken] = payoutToken.balanceOf(address(this));
+        priorBalances[quoteToken] = address(quoteToken) == address(0) ? address(this).balance : quoteToken.balanceOf(address(this));
+        priorBalances[payoutToken] = address(quoteToken) == address(0) ? address(this).balance : payoutToken.balanceOf(address(this));
         _amountsPerMarket[id_][0] += inputAmount_;
         _amountsPerMarket[id_][1] += outputAmount_;
     }

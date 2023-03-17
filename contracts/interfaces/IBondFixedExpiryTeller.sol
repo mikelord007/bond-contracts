@@ -2,7 +2,7 @@
 pragma solidity >=0.8.0;
 
 import {ERC20BondToken} from "../ERC20BondToken.sol";
-import {ERC20} from "solmate/tokens/ERC20.sol";
+import {ERC20} from "@rari-capital/solmate/src/tokens/ERC20.sol";
 
 interface IBondFixedExpiryTeller {
     /// @notice          Redeem a fixed-expiry bond token for the underlying token (bond token must have matured)
@@ -28,16 +28,24 @@ interface IBondFixedExpiryTeller {
     /// @param underlying_  ERC20 token redeemable when the bond token vests
     /// @param expiry_      Timestamp at which the bond token can be redeemed for the underlying token
     /// @return             Address of the ERC20 bond token being created
-    function deploy(ERC20 underlying_, uint48 expiry_) external returns (ERC20BondToken);
+    function deploy(
+        ERC20 underlying_,
+        uint48 expiry_
+    ) external returns (ERC20BondToken);
 
     /// @notice         Get the ERC20BondToken contract corresponding to a market
     /// @param id_      ID of the market
     /// @return         ERC20BondToken contract address
-    function getBondTokenForMarket(uint256 id_) external view returns (ERC20BondToken);
+    function getBondTokenForMarket(
+        uint256 id_
+    ) external view returns (ERC20BondToken);
 
     /// @notice             Get the ERC20BondToken contract corresponding to an (underlying, expiry) pair, reverts if no token exists
     /// @param underlying_  ERC20 token redeemable when the bond token vests
     /// @param expiry_      Timestamp at which the bond token can be redeemed for the underlying token (this is rounded to the nearest day)
     /// @return             ERC20BondToken contract address
-    function getBondToken(ERC20 underlying_, uint48 expiry_) external view returns (ERC20BondToken);
+    function getBondToken(
+        ERC20 underlying_,
+        uint48 expiry_
+    ) external view returns (ERC20BondToken);
 }

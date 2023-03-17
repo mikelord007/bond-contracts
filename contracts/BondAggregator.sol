@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 pragma solidity 0.8.15;
 
-import {ERC20} from "solmate/tokens/ERC20.sol";
-import {Auth, Authority} from "solmate/auth/Auth.sol";
+import {ERC20} from "@rari-capital/solmate/src/tokens/ERC20.sol";
+import {Auth, Authority} from "@rari-capital/solmate/src/auth/Auth.sol";
 
 import {IBondAggregator} from "./interfaces/IBondAggregator.sol";
 import {IBondTeller} from "./interfaces/IBondTeller.sol";
@@ -56,10 +56,15 @@ contract BondAggregator is IBondAggregator, Auth {
     // A 'vesting' param longer than 50 years is considered a timestamp for fixed expiry.
     uint48 private constant MAX_FIXED_TERM = 52 weeks * 50;
 
-    constructor(address guardian_, Authority authority_) Auth(guardian_, authority_) {}
+    constructor(
+        address guardian_,
+        Authority authority_
+    ) Auth(guardian_, authority_) {}
 
     /// @inheritdoc IBondAggregator
-    function registerAuctioneer(IBondAuctioneer auctioneer_) external requiresAuth {
+    function registerAuctioneer(
+        IBondAuctioneer auctioneer_
+    ) external requiresAuth {
         // Restricted to authorized addresses
 
         // Check that the auctioneer is not already registered
@@ -72,14 +77,15 @@ contract BondAggregator is IBondAggregator, Auth {
     }
 
     /// @inheritdoc IBondAggregator
-    function registerMarket(ERC20 payoutToken_, ERC20 quoteToken_)
-        external
-        override
-        returns (uint256 marketId)
-    {
+    function registerMarket(
+        ERC20 payoutToken_,
+        ERC20 quoteToken_
+    ) external override returns (uint256 marketId) {
         if (!_whitelist[msg.sender]) revert Aggregator_OnlyAuctioneer();
-        if (address(payoutToken_) == address(0) || address(quoteToken_) == address(0))
-            revert Aggregator_InvalidParams();
+        if (
+            address(payoutToken_) == address(0) ||
+            address(quoteToken_) == address(0)
+        ) revert Aggregator_InvalidParams();
         marketId = marketCounter;
         marketsToAuctioneers[marketId] = IBondAuctioneer(msg.sender);
         marketsForPayout[address(payoutToken_)].push(marketId);
@@ -90,7 +96,9 @@ contract BondAggregator is IBondAggregator, Auth {
     /* ========== VIEW FUNCTIONS ========== */
 
     /// @inheritdoc IBondAggregator
-    function getAuctioneer(uint256 id_) external view returns (IBondAuctioneer) {
+    function getAuctioneer(
+        uint256 id_
+    ) external view returns (IBondAuctioneer) {
         return marketsToAuctioneers[id_];
     }
 
@@ -117,7 +125,10 @@ contract BondAggregator is IBondAggregator, Auth {
     }
 
     /// @inheritdoc IBondAggregator
-    function maxAmountAccepted(uint256 id_, address referrer_) external view returns (uint256) {
+    function maxAmountAccepted(
+        uint256 id_,
+        address referrer_
+    ) external view returns (uint256) {
         IBondAuctioneer auctioneer = marketsToAuctioneers[id_];
         return auctioneer.maxAmountAccepted(id_, referrer_);
     }
@@ -135,12 +146,10 @@ contract BondAggregator is IBondAggregator, Auth {
     }
 
     /// @inheritdoc IBondAggregator
-    function liveMarketsBetween(uint256 firstIndex_, uint256 lastIndex_)
-        external
-        view
-        override
-        returns (uint256[] memory)
-    {
+    function liveMarketsBetween(
+        uint256 firstIndex_,
+        uint256 lastIndex_
+    ) external view override returns (uint256[] memory) {
         uint256 count;
         for (uint256 i = firstIndex_; i < lastIndex_; ++i) {
             if (isLive(i)) ++count;
@@ -158,12 +167,10 @@ contract BondAggregator is IBondAggregator, Auth {
     }
 
     /// @inheritdoc IBondAggregator
-    function liveMarketsFor(address token_, bool isPayout_)
-        public
-        view
-        override
-        returns (uint256[] memory)
-    {
+    function liveMarketsFor(
+        address token_,
+        bool isPayout_
+    ) public view override returns (uint256[] memory) {
         uint256[] memory mkts;
 
         mkts = isPayout_ ? marketsForPayout[token_] : marketsForQuote[token_];
@@ -189,7 +196,10 @@ contract BondAggregator is IBondAggregator, Auth {
     }
 
     /// @inheritdoc IBondAggregator
-    function marketsFor(address payout_, address quote_) public view returns (uint256[] memory) {
+    function marketsFor(
+        address payout_,
+        address quote_
+    ) public view returns (uint256[] memory) {
         uint256[] memory forPayout = liveMarketsFor(payout_, true);
         uint256 count;
 
@@ -198,7 +208,9 @@ contract BondAggregator is IBondAggregator, Auth {
         uint256 len = forPayout.length;
         for (uint256 i; i < len; ++i) {
             auctioneer = marketsToAuctioneers[forPayout[i]];
-            (, , , quoteToken, , ) = auctioneer.getMarketInfoForPurchase(forPayout[i]);
+            (, , , quoteToken, , ) = auctioneer.getMarketInfoForPurchase(
+                forPayout[i]
+            );
             if (isLive(forPayout[i]) && address(quoteToken) == quote_) ++count;
         }
 
@@ -207,7 +219,9 @@ contract BondAggregator is IBondAggregator, Auth {
 
         for (uint256 i; i < len; ++i) {
             auctioneer = marketsToAuctioneers[forPayout[i]];
-            (, , , quoteToken, , ) = auctioneer.getMarketInfoForPurchase(forPayout[i]);
+            (, , , quoteToken, , ) = auctioneer.getMarketInfoForPurchase(
+                forPayout[i]
+            );
             if (isLive(forPayout[i]) && address(quoteToken) == quote_) {
                 ids[count] = forPayout[i];
                 ++count;
@@ -236,15 +250,19 @@ contract BondAggregator is IBondAggregator, Auth {
         IBondAuctioneer auctioneer;
         for (uint256 i; i < len; ++i) {
             auctioneer = marketsToAuctioneers[ids[i]];
-            (, , , , vesting, maxPayout) = auctioneer.getMarketInfoForPurchase(ids[i]);
+            (, , , , vesting, maxPayout) = auctioneer.getMarketInfoForPurchase(
+                ids[i]
+            );
 
-            uint256 expiry = (vesting <= MAX_FIXED_TERM) ? block.timestamp + vesting : vesting;
+            uint256 expiry = (vesting <= MAX_FIXED_TERM)
+                ? block.timestamp + vesting
+                : vesting;
 
             if (expiry <= maxExpiry_) {
                 if (minAmountOut_ <= maxPayout) {
-                    try auctioneer.payoutFor(amountIn_, ids[i], address(0)) returns (
-                        uint256 payout
-                    ) {
+                    try
+                        auctioneer.payoutFor(amountIn_, ids[i], address(0))
+                    returns (uint256 payout) {
                         if (payout > highestOut && payout >= minAmountOut_) {
                             highestOut = payout;
                             id = ids[i];

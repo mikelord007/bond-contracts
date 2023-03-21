@@ -1,32 +1,18 @@
-// We require the Hardhat Runtime Environment explicitly here. This is optional
-// but useful for running the script in a standalone fashion through `node <script>`.
-//
-// You can also run a script with `npx hardhat run <script>`. If you do that, Hardhat
-// will compile your contracts, add the Hardhat Runtime Environment's members to the
-// global scope, and execute the script.
-const hre = require("hardhat");
+import { ethers, BigNumber } from 'ethers';
+import { time } from "@nomicfoundation/hardhat-network-helpers";
 
-async function main() {
-  const currentTimestampInSeconds = Math.round(Date.now() / 1000);
-  const unlockTime = currentTimestampInSeconds + 60;
+const readStorage = async () => {
+  
+try {
+    const provider = new ethers.providers.Web3Provider(web3Provider);
+    // const slot =  BigNumber.from(0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc)
+    // const storage = await provider.send("evm_mine", 20000000000);
+    // console.log("storage: ",storage)
 
-  const lockedAmount = hre.ethers.utils.parseEther("0.001");
-
-  const Lock = await hre.ethers.getContractFactory("Lock");
-  const lock = await Lock.deploy(unlockTime, { value: lockedAmount });
-
-  await lock.deployed();
-
-  console.log(
-    `Lock with ${ethers.utils.formatEther(
-      lockedAmount
-    )}ETH and unlock timestamp ${unlockTime} deployed to ${lock.address}`
-  );
+    const a = await await provider.send("evm_increaseTime", [1679788800] );
+    console.log(a)
+}
+catch(e) {console.log(e)}
 }
 
-// We recommend this pattern to be able to use async/await everywhere
-// and properly handle errors.
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+readStorage();

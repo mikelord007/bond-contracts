@@ -20,7 +20,7 @@ interface IBondFixedExpiryTeller {
         ERC20 underlying_,
         uint48 expiry_,
         uint256 amount_
-    ) external returns (ERC20BondToken, uint256);
+    ) external payable returns (ERC20BondToken, uint256);
 
     /// @notice             Deploy a new ERC20 bond token for an (underlying, expiry) pair and return its address
     /// @dev                ERC20 used for fixed-expiry
@@ -28,24 +28,16 @@ interface IBondFixedExpiryTeller {
     /// @param underlying_  ERC20 token redeemable when the bond token vests
     /// @param expiry_      Timestamp at which the bond token can be redeemed for the underlying token
     /// @return             Address of the ERC20 bond token being created
-    function deploy(
-        ERC20 underlying_,
-        uint48 expiry_
-    ) external returns (ERC20BondToken);
+    function deploy(ERC20 underlying_, uint48 expiry_) external returns (ERC20BondToken);
 
     /// @notice         Get the ERC20BondToken contract corresponding to a market
     /// @param id_      ID of the market
     /// @return         ERC20BondToken contract address
-    function getBondTokenForMarket(
-        uint256 id_
-    ) external view returns (ERC20BondToken);
+    function getBondTokenForMarket(uint256 id_) external view returns (ERC20BondToken);
 
     /// @notice             Get the ERC20BondToken contract corresponding to an (underlying, expiry) pair, reverts if no token exists
     /// @param underlying_  ERC20 token redeemable when the bond token vests
     /// @param expiry_      Timestamp at which the bond token can be redeemed for the underlying token (this is rounded to the nearest day)
     /// @return             ERC20BondToken contract address
-    function getBondToken(
-        ERC20 underlying_,
-        uint48 expiry_
-    ) external view returns (ERC20BondToken);
+    function getBondToken(ERC20 underlying_, uint48 expiry_) external view returns (ERC20BondToken);
 }

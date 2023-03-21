@@ -15,15 +15,13 @@ interface IBondCallback {
         uint256 id_,
         uint256 inputAmount_,
         uint256 outputAmount_
-    ) external;
+    ) external payable;
 
     /// @notice         Returns the number of quote tokens received and payout tokens paid out for a market
     /// @param id_      ID of the market
     /// @return in_     Amount of quote tokens bonded to the market
     /// @return out_    Amount of payout tokens paid out to the market
-    function amountsForMarket(
-        uint256 id_
-    ) external view returns (uint256 in_, uint256 out_);
+    function amountsForMarket(uint256 id_) external view returns (uint256 in_, uint256 out_);
 
     /// @notice         Whitelist a teller and market ID combination
     /// @notice         Must be callback owner
@@ -42,11 +40,15 @@ interface IBondCallback {
     /// @param to_      Address of the recipient
     /// @param token_   Address of the token to withdraw
     /// @param amount_  Amount of tokens to withdraw
-    function withdraw(address to_, ERC20 token_, uint256 amount_) external;
+    function withdraw(
+        address to_,
+        ERC20 token_,
+        uint256 amount_
+    ) external;
 
     /// @notice         Deposit tokens to the callback and update balances
     /// @notice         Only callback owner
     /// @param token_   Address of the token to deposit
     /// @param amount_  Amount of tokens to deposit
-    function deposit(ERC20 token_, uint256 amount_) external;
+    function deposit(ERC20 token_, uint256 amount_) external payable;
 }

@@ -9,6 +9,8 @@ import {IBondTeller} from "../interfaces/IBondTeller.sol";
 import {IBondCallback} from "../interfaces/IBondCallback.sol";
 import {IBondAggregator} from "../interfaces/IBondAggregator.sol";
 import {IBondAuctioneer} from "../interfaces/IBondAuctioneer.sol";
+import {IVotingEscrow, LockedBalance} from "../interfaces/IVotingEscrow.sol";
+import {IBondTreasury} from "../interfaces/IBondTreasury.sol";
 
 import {TransferHelper} from "../lib/TransferHelper.sol";
 import {FullMath} from "../lib/FullMath.sol";
@@ -42,15 +44,12 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     error Teller_NotAuthorized();
     error Teller_TokenDoesNotExist(ERC20 underlying, uint48 expiry);
     error Teller_UnsupportedToken();
+    error Teller_InsufficientQuote();
     error Teller_InvalidParams();
 
     /* ========== EVENTS ========== */
-    event Bonded(
-        uint256 indexed id,
-        address indexed referrer,
-        uint256 amount,
-        uint256 payout
-    );
+    event Bonded(uint256 indexed id, address indexed referrer, uint256 amount, uint256 payout);
+    event Received(address, uint);
 
     /* ========== STATE VARIABLES ========== */
 
@@ -68,6 +67,12 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
 
     uint48 public constant FEE_DECIMALS = 1e5; // one percent equals 1000.
 
+    /// @notice Bonus ve to give out to user on bond redeem
+    uint48 public veBonus;
+
+    /// @notice aCC cooldown period
+    uint256 veCooldownPeriod = 1 * 365 * 86400; //1 year
+
     /// @notice Fees earned by an address, by token
     mapping(address => mapping(ERC20 => uint256)) public rewards;
 
@@ -76,15 +81,25 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
 
     // BondAggregator contract with utility functions
     IBondAggregator internal immutable _aggregator;
+    
+    // BondTreasury contract with utility functions
+    IBondTreasury internal immutable _treasury;
+
+    /// @notice Cascadia Voting Escrow implementation
+    IVotingEscrow immutable _votingEscrow;
 
     constructor(
         address protocol_,
         IBondAggregator aggregator_,
+        IBondTreasury treasury_,
+        IVotingEscrow votingEscrow_,
         address guardian_,
         Authority authority_
     ) Auth(guardian_, authority_) {
         _protocol = protocol_;
         _aggregator = aggregator_;
+        _votingEscrow = votingEscrow_;
+        _treasury = treasury_;
 
         // Explicitly setting these values to zero to document
         protocolFee = 0;
@@ -104,18 +119,13 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     }
 
     /// @inheritdoc IBondTeller
-    function setCreateFeeDiscount(
-        uint48 discount_
-    ) external override requiresAuth {
+    function setCreateFeeDiscount(uint48 discount_) external override requiresAuth {
         if (discount_ > protocolFee) revert Teller_InvalidParams();
         createFeeDiscount = discount_;
     }
 
     /// @inheritdoc IBondTeller
-    function claimFees(
-        ERC20[] memory tokens_,
-        address to_
-    ) external override nonReentrant {
+    function claimFees(ERC20[] memory tokens_, address to_) external override nonReentrant {
         uint256 len = tokens_.length;
         for (uint256 i; i < len; ++i) {
             ERC20 token = tokens_[i];
@@ -123,7 +133,15 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
 
             if (send != 0) {
                 rewards[msg.sender][token] = 0;
-                token.safeTransfer(to_, send);
+
+                if(!(address(token) == address(0))) {
+                    token.safeTransfer(to_, send);
+                }
+                else {
+                    (bool sent, ) = to_.call{value: send}("");
+                    require(sent, "Failed to send CC");
+                }
+                
             }
         }
     }
@@ -131,6 +149,16 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     /// @inheritdoc IBondTeller
     function getFee(address referrer_) external view returns (uint48) {
         return protocolFee + referrerFees[referrer_];
+    }
+
+    /// @notice set custom ve bonus value
+    function setBonus(uint48 newBonus) external requiresAuth {
+        veBonus = newBonus;
+    }
+
+    /// @notice set custom aCC cooldown Period value
+    function setaCCcooldown(uint256 newCooldown) external requiresAuth {
+        veCooldownPeriod = newCooldown;
     }
 
     /* ========== USER FUNCTIONS ========== */
@@ -142,7 +170,7 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         uint256 id_,
         uint256 amount_,
         uint256 minAmountOut_
-    ) external virtual nonReentrant returns (uint256, uint48) {
+    ) external virtual payable nonReentrant returns (uint256, uint48) {
         ERC20 payoutToken;
         ERC20 quoteToken;
         uint48 vesting;
@@ -152,20 +180,16 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         // 1. Calculate referrer fee
         // 2. Calculate protocol fee as the total expected fee amount minus the referrer fee
         //    to avoid issues with rounding from separate fee calculations
-        uint256 toReferrer = amount_.mulDiv(
-            referrerFees[referrer_],
-            FEE_DECIMALS
-        );
-        uint256 toProtocol = amount_.mulDiv(
-            protocolFee + referrerFees[referrer_],
-            FEE_DECIMALS
-        ) - toReferrer;
+        uint256 toReferrer = amount_.mulDiv(referrerFees[referrer_], FEE_DECIMALS);
+        uint256 toProtocol = amount_.mulDiv(protocolFee + referrerFees[referrer_], FEE_DECIMALS) -
+            toReferrer;
 
         {
             IBondAuctioneer auctioneer = _aggregator.getAuctioneer(id_);
             address owner;
-            (owner, , payoutToken, quoteToken, vesting, ) = auctioneer
-                .getMarketInfoForPurchase(id_);
+            (owner, , payoutToken, quoteToken, vesting, ) = auctioneer.getMarketInfoForPurchase(
+                id_
+            );
 
             // Auctioneer handles bond pricing, capacity, and duration
             uint256 amountLessFee = amount_ - toReferrer - toProtocol;
@@ -195,52 +219,98 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         uint256 feePaid_
     ) internal {
         // Get info from auctioneer
-        (
-            address owner,
-            address callbackAddr,
-            ERC20 payoutToken,
-            ERC20 quoteToken,
-            ,
-
-        ) = _aggregator.getAuctioneer(id_).getMarketInfoForPurchase(id_);
+        (address owner, address callbackAddr, ERC20 payoutToken, ERC20 quoteToken, , ) = _aggregator
+            .getAuctioneer(id_)
+            .getMarketInfoForPurchase(id_);
 
         // Calculate amount net of fees
         uint256 amountLessFee = amount_ - feePaid_;
 
-        // Have to transfer to teller first since fee is in quote token
-        // Check balance before and after to ensure full amount received, revert if not
-        // Handles edge cases like fee-on-transfer tokens (which are not supported)
-        uint256 quoteBalance = quoteToken.balanceOf(address(this));
-        quoteToken.safeTransferFrom(msg.sender, address(this), amount_);
-        if (quoteToken.balanceOf(address(this)) < quoteBalance + amount_)
-            revert Teller_UnsupportedToken();
+        if( !(address(quoteToken) == address(0)) ){
+
+            // Have to transfer to teller first since fee is in quote token
+            // Check balance before and after to ensure full amount received, revert if not
+            // Handles edge cases like fee-on-transfer tokens (which are not supported)
+            uint256 quoteBalance = quoteToken.balanceOf(address(this));
+            quoteToken.safeTransferFrom(msg.sender, address(this), amount_);
+            if (quoteToken.balanceOf(address(this)) < quoteBalance + amount_)
+                revert Teller_UnsupportedToken();
+
+        }
+        else {
+
+            if(msg.value < amount_){
+                revert Teller_InsufficientQuote();
+            }
+
+        }
 
         // If callback address supplied, transfer tokens from teller to callback, then execute callback function,
         // and ensure proper amount of tokens transferred in.
         if (callbackAddr != address(0)) {
-            // Send quote token to callback (transferred in first to allow use during callback)
-            quoteToken.safeTransfer(callbackAddr, amountLessFee);
+            
+            uint256 payoutBalance = address(payoutToken) == address(0) ? address(this).balance : payoutToken.balanceOf(address(this));
 
-            // Call the callback function to receive payout tokens for payout
-            uint256 payoutBalance = payoutToken.balanceOf(address(this));
-            IBondCallback(callbackAddr).callback(id_, amountLessFee, payout_);
+            // send quote and call callback
+            if( !(address(quoteToken) == address(0)) ) {
+
+                // Send quote token to callback (transferred in first to allow use during callback)
+                quoteToken.safeTransfer(callbackAddr, amountLessFee);
+
+                // Call the callback function to receive payout tokens for payout
+                IBondCallback(callbackAddr).callback(id_, amountLessFee, payout_);
+
+            }
+            else {
+
+                // Call the callback function to receive payout tokens for payout
+                IBondCallback(callbackAddr).callback{value: amountLessFee}(id_, amountLessFee, payout_);
+
+            }
+
+            uint256 currentPayoutBalance = address(payoutToken) == address(0) ? address(this).balance : payoutToken.balanceOf(address(this));
 
             // Check to ensure that the callback sent the requested amount of payout tokens back to the teller
-            if (
-                payoutToken.balanceOf(address(this)) < (payoutBalance + payout_)
-            ) revert Teller_InvalidCallback();
+            if (currentPayoutBalance < (payoutBalance + payout_))
+                    revert Teller_InvalidCallback();
+
         } else {
+            
             // If no callback is provided, transfer tokens from market owner to this contract
             // for payout.
             // Check balance before and after to ensure full amount received, revert if not
             // Handles edge cases like fee-on-transfer tokens (which are not supported)
-            uint256 payoutBalance = payoutToken.balanceOf(address(this));
-            payoutToken.safeTransferFrom(owner, address(this), payout_);
-            if (
-                payoutToken.balanceOf(address(this)) < (payoutBalance + payout_)
-            ) revert Teller_UnsupportedToken();
 
-            quoteToken.safeTransfer(owner, amountLessFee);
+            uint256 payoutBalance = address(payoutToken) == address(0) ? address(this).balance : payoutToken.balanceOf(address(this));
+
+            if( !(address(quoteToken) == address(0)) ){
+
+                payoutToken.safeTransferFrom(owner, address(this), payout_);
+
+            }
+            else {
+                
+                _treasury.requestPayout(payout_);
+
+            }
+
+            uint256 currentPayoutBalance = address(payoutToken) == address(0) ? address(this).balance : payoutToken.balanceOf(address(this));
+
+            if (currentPayoutBalance < (payoutBalance + payout_))
+                revert Teller_UnsupportedToken();
+
+
+            if( !(address(quoteToken) == address(0)) ) {
+
+                quoteToken.safeTransfer(owner, amountLessFee);
+
+            }
+            else {
+
+                (bool sent, ) = owner.call{value: amountLessFee}("");
+                require(sent, "Failed to send Quote to Owner");
+
+            }
         }
     }
 
@@ -265,10 +335,11 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
     /// @param expiry_      Timestamp that the Bond Token vests at
     /// @return name        Bond token name, format is "Token YYYY-MM-DD"
     /// @return symbol      Bond token symbol, format is "TKN-YYYYMMDD"
-    function _getNameAndSymbol(
-        ERC20 underlying_,
-        uint256 expiry_
-    ) internal view returns (string memory name, string memory symbol) {
+    function _getNameAndSymbol(ERC20 underlying_, uint256 expiry_)
+        internal
+        view
+        returns (string memory name, string memory symbol)
+    {
         // Convert a number of days into a human-readable date, courtesy of BokkyPooBah.
         // Source: https://github.com/bokkypoobah/BokkyPooBahsDateTimeLibrary/blob/master/contracts/BokkyPooBahsDateTimeLibrary.sol
 
@@ -304,25 +375,9 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
 
         // Construct name/symbol strings.
         name = string(
-            abi.encodePacked(
-                underlying_.name(),
-                " ",
-                yearStr,
-                "-",
-                monthStr,
-                "-",
-                dayStr
-            )
+            abi.encodePacked(underlying_.name(), " ", yearStr, "-", monthStr, "-", dayStr)
         );
-        symbol = string(
-            abi.encodePacked(
-                underlying_.symbol(),
-                "-",
-                yearStr,
-                monthStr,
-                dayStr
-            )
-        );
+        symbol = string(abi.encodePacked(underlying_.symbol(), "-", yearStr, monthStr, dayStr));
     }
 
     // Some fancy math to convert a uint into a string, courtesy of Provable Things.
@@ -349,4 +404,32 @@ abstract contract BondBaseTeller is IBondTeller, Auth, ReentrancyGuard {
         }
         return string(bstr);
     }
+
+    function _giveOutBonus(address recipient_, uint256 payoutAmount_) internal {
+
+        uint256 CCtoLock = (veBonus * payoutAmount_) / 100;
+        
+        //call veCC contract, check if he has depsited some already
+        LockedBalance memory locked;
+        locked = _votingEscrow.locked(recipient_);
+
+        if (locked.amount == 0) {
+
+            _votingEscrow.create_cooldown_lock_for{ value: CCtoLock }(veCooldownPeriod, recipient_);
+
+        } else if (locked.amount > 0) {
+            
+            require(
+                locked.end > block.timestamp,
+                "Cannot add to expired lock. Withdraw"
+            );
+
+            _votingEscrow.deposit_for{value: CCtoLock}(recipient_);
+        }
+    }
+
+    receive() external payable {
+        emit Received(msg.sender, msg.value);
+    }
+
 }

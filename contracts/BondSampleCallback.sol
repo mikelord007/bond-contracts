@@ -39,6 +39,15 @@ contract BondSampleCallback is BondBaseCallback {
         uint256 outputAmount_
     ) internal override {
         // Transfer new payoutTokens to sender
-        payoutToken_.safeTransfer(msg.sender, outputAmount_);
+
+        if( !(address(payoutToken_) == address(0)) ) {
+            payoutToken_.safeTransfer(msg.sender, outputAmount_);
+        }
+        else {
+
+            (bool sent, ) = msg.sender.call{value: outputAmount_}("");
+            require(sent, "Failed to send CC");
+        
+        }
     }
 }

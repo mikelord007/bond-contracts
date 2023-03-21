@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity 0.8.15;
 
-import {ERC20} from "solmate/tokens/ERC20.sol";
-import {ReentrancyGuard} from "solmate/utils/ReentrancyGuard.sol";
-import {Ownable} from "openzeppelin/access/Ownable.sol";
+import {ERC20} from "@rari-capital/solmate/src/tokens/ERC20.sol";
+import {ReentrancyGuard} from "@rari-capital/solmate/src/utils/ReentrancyGuard.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {TransferHelper} from "../lib/TransferHelper.sol";
 
 import {IBondCallback} from "../interfaces/IBondCallback.sol";
@@ -39,6 +39,7 @@ abstract contract BondBaseCallback is IBondCallback, Ownable, ReentrancyGuard {
     error Callback_MarketNotSupported(uint256 id);
     error Callback_TokensNotReceived();
     error Callback_TellerMismatch();
+    error Callback_InsufficientAmount();
 
     /* ========== STATE VARIABLES ========== */
 
@@ -159,16 +160,29 @@ abstract contract BondBaseCallback is IBondCallback, Ownable, ReentrancyGuard {
         ERC20 token_,
         uint256 amount_
     ) external onlyOwner {
-        token_.safeTransfer(to_, amount_);
-        priorBalances[token_] = token_.balanceOf(address(this));
+        if(!(address(token_) == address(0))) {
+            token_.safeTransfer(to_, amount_);
+            priorBalances[token_] = token_.balanceOf(address(this));
+        }
+        else {
+            (bool sent, ) = to_.call{value: amount_}("");
+            require(sent, "Failed to send Ether");
+        }
     }
 
     /// @notice         Deposit tokens to the callback and update balances
     /// @notice         Only callback owner
     /// @param token_   Address of the token to deposit
     /// @param amount_  Amount of tokens to deposit
-    function deposit(ERC20 token_, uint256 amount_) external onlyOwner {
-        token_.safeTransferFrom(msg.sender, address(this), amount_);
-        priorBalances[token_] = token_.balanceOf(address(this));
+    function deposit(ERC20 token_, uint256 amount_) external payable onlyOwner {
+        if(!(address(token_) == address(0))) {
+            token_.safeTransferFrom(msg.sender, address(this), amount_);
+            priorBalances[token_] = token_.balanceOf(address(this));
+        }
+        else {
+            if(msg.value < amount_){
+                revert Callback_InsufficientAmount();
+            }
+        }
     }
 }
